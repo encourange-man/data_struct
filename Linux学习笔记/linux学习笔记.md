@@ -73,7 +73,7 @@ chomd [-R] 700 文件/目录
 
 ## linux目录结构
 
-![](/images/7c349afd6928f87c742df63407d30ccc.png)
+![](images/7c349afd6928f87c742df63407d30ccc.png)
 
 
 
@@ -226,11 +226,48 @@ drwx------. 2 machen machen 59 1月  30 15:06 /home/machen
 # 默认会建立用户家目录，且权限为700
 ```
 
+# 进程管理
 
+## 查看进程
 
+### ps命令
 
+```properties
+ps -aux: 观察系统中所有线程的数据
+ps -lA:  效果同上
+ps -l: 仅观察bash相关的进程
 
+参数说明：
+-A:显示所有的进程
+-u:显示使用者
+x: 列出较为完整的信息
+```
 
+![](images/屏幕快照 2019-07-05 10.47.51.png)
+
+```properties
+字段说明：
+%CPU: cau资源占用百分比
+%MEM: 物理内存占用百分比
+STAT: 进程目前状态
+	s(sleep): 睡眠，可以被唤醒（signal）
+	R(running):运行
+	D:不可被唤醒的睡眠状态，通常在等待IO操作
+	T:停止状态（stop）
+	Z(zombie):僵尸状态，进程终止但无法移除内存外。
+```
+
+### top命令
+
+```properties
+
+```
+
+### kill命令
+
+```properties
+
+```
 
 
 
