@@ -1,4 +1,10 @@
-# 前言
+# 一、Java基础
+
+## 1. Java8
+
+s
+
+# 二、SpringBoot
 
 此学习笔记是参考与springboot2.1.2官方文档的，然后他的系统需要：
 
@@ -870,13 +876,283 @@ java -jar spring-boot-02-config-02-0.0.1-SNAPSHOT.jar --server.port=8087  --serv
 
 
 
+# 5. SpringMVC MOCK测试
+
+在web开发中，我们通常进行Service层服务的单元测试。有时候，我们也需要在Controller层进行接口测试，它有如下好处：
+
+- 规范化接口测试。如果不在Controller层测试，开发人员往往需要使用浏览器或者Postman等工具访问接口，流程繁琐。
+- 提高开发效率。如果不在Controller层测试，开发人员需要启动整个工程判断代码正确性。配置Controller层测试后，无需启动所有接口；使用StandAlone方式测试时，甚至无需启动web工程。
+- 配置监控服务。可以配置监控进程，对所有接口进行周期性检测，发现接口异常时进行通知。
 
 
 
+SpringMVC Test框架构建在spring-test模块的Servlet API模拟对象之上，因此不使用正在运行的Servlet容器。它使用DispatcherServlet提供完整的Spring MVC运行时行为。
+
+Spring MVC Test的目标就是提供一个有效的方式去测试Controller，通过实际的DispatcherServlet去执行一个请求，并切生成相应的相应。
 
 
 
-# 5、日志
+Spring提供两种形式的集成测试：
+
+1. **独立测试方式**（**StandaloneMockMvcBuilder**）。
+
+   ```java
+   // 通过调用MockMvcBuilders.standaloneSetup()
+   StandaloneMockMvcBuilder standaloneMockMvcBuilder = MockMvcBuilders.standaloneSetup();
+   ```
+
+   优点：运行快，无需启动web，不加载Spring的配置。
+
+   缺点：对于依赖其他Component的接口，需要手动mock所依赖的Component，手动设置其返回收据，一次只能测试一个controller。
+
+   ```java
+   public class MyWebTests {
+   
+       private MockMvc mockMvc;
+   
+       @Before
+       public void setup() {
+           this.mockMvc = MockMvcBuilders.standaloneSetup(new AccountController()).build();
+       }
+   
+       // ...
+   }
+   ```
+
+   `standalongSetUp`更接近于单元测试，它一次测试一个`controller`，但是需要mock出Controller的依赖并且手动注入到Controller中，并且它不涉及加载Spring配置
+
+   
+
+2. **集成Web测试方式**（**DefaultMockMvcBuilder**）。
+
+   ```java
+   // 通过调用MockMvcBuilders.webAppContextSetup()
+   DefaultMockMvcBuilder defaultMockMvcBuilder = MockMvcBuilders.webAppContextSetup();
+   ```
+
+   优点：加载了ApplicationContext，所依赖的各种Component已经注入，完全模拟运行时场景，无需手动造数据。
+
+   缺点：相比于独立测试方式，运行较慢。
+
+   ```java
+   @RunWith(SpringRunner.class)
+   @WebAppConfiguration
+   @ContextConfiguration("my-servlet-context.xml")
+   public class MyWebTests {
+   
+       @Autowired
+       private WebApplicationContext wac;
+   
+       private MockMvc mockMvc;
+   
+       @Before
+       public void setup() {
+           this.mockMvc = MockMvcBuilders.webAppContextSetup(this.wac).build();
+       }
+   
+       // ...
+   }
+   ```
+
+需要做如下几步操作：
+
+- 使用@ContextConfiguration注解，加载SpringMVC 的配置文件
+- 注入WebApplication对象，用于构建一个MockMvc的实例。
+
+
+
+## 5.1 常见注解
+
+```properties
+@RunWith(SpringJUnit4ClassRunner.class): 表示使用Spring Test组件进行单元测试
+
+@WebAppConfiguration: 使用这个annotation会在跑单元测试的时候真实的启一个web服务，然后开始调用Controller的Rest API，待单元测试跑完之后再将web服务停掉
+
+@ContextConfiguration: 指定Bean的配置文件信息，可以有多种方式，这个例子使用的是文件路径形式，如果有多个配置文件，可以将括号中的信息配置为一个字符串数组来表示
+```
+
+
+
+```java
+@SpringJUnitWebConfig(locations = "test-servlet-context.xml")
+class ExampleTests {
+    private MockMvc mockMvc;
+
+    @BeforeEach
+    void setup(WebApplicationContext wac) {
+        this.mockMvc = MockMvcBuilders.webAppContextSetup(wac).build();
+    }
+
+    @Test
+    void getAccount() throws Exception {
+        this.mockMvc.perform(get("/accounts/1")
+                .accept(MediaType.parseMediaType("application/json;charset=UTF-8")))
+            .andExpect(status().isOk())
+            .andExpect(content().contentType("application/json"))
+            .andExpect(jsonPath("$.name").value("Lee"));
+    }
+}
+```
+
+上述测试依赖于TestContext框架的WebApplicationContext支持，从位于与测试类相同的包中的XML配置文件加载Spring配置，但也支持基于Java和Groovy的配置。
+
+MocMvc实例被用于运行一个`GET`请求，并且验证结果相应码为`200`，请求中的`ContentType`是`application/json`，他的返回相应也是`Json `格式的对象，`name`对象有个`Lee`属性，对于其中的`JsonPath`可以参考github上的资料，[JsonPath](https://github.com/json-path/JsonPath)
+
+
+
+## 5.2 执行请求 perform()
+
+您可以执行使用任何HTTP方法的请求，比如在url模版样式中指定参数：
+
+```java
+ MvcResult result = mockMvc.perform(MockMvcRequestBuilders.get("/web/{id}/list",12)
+                .param("thing", "somewhere")
+                .accept(MediaType.APPLICATION_JSON))
+                .andExpect(MockMvcResultMatchers.status().isOk())
+                .andDo(MockMvcResultHandlers.print())
+                .andReturn();
+```
+
+在上面的例子中，，为每个执行的请求设置contextPath和servletPath是很麻烦的。您可以在构建mocMVC时设置默认请求属性，比如这样：
+
+```java
+@Before
+public void setUp(){
+  mockMvc = MockMvcBuilders.webAppContextSetup(wac)
+    .defaultRequest(MockMvcRequestBuilders.get("/"))
+    .build();
+}
+```
+
+## 5.3 定义期望 andExcept()
+
+下面是在Springboot中Controller测试类
+
+```java
+@RunWith(SpringJUnit4ClassRunner.class)
+@WebAppConfiguration
+@SpringBootTest
+public class AuditorInfoWebControllerTest {
+
+    @Autowired
+    private WebApplicationContext wac;
+
+    private MockMvc mockMvc;
+
+    private Logger logger = LoggerFactory.getLogger(WebApplicationTests.class);
+
+    @Before
+    public void setUp(){
+        mockMvc = MockMvcBuilders.webAppContextSetup(wac).build();
+    }
+
+    @Test
+    public void getAuditorsListTest() throws Exception {
+        MvcResult result = mockMvc.perform(MockMvcRequestBuilders.get("/web/auditor/list")
+                .param("auditorType", "m2c")
+                .param("userId", "1101")
+                .accept(MediaType.APPLICATION_JSON))
+                .andExpect(MockMvcResultMatchers.status().isOk())
+                .andDo(MockMvcResultHandlers.print())
+                .andReturn();
+        System.out.println(result.getResponse());
+        logger.info("################## "+result.getResponse());
+    }
+}
+```
+
+## 5.4 测试API说明
+
+Spring mvc测试框架提供了测试MVC需要的API，主要包括`Mock`、`MockMvcBuilder`、`MockMvc`、`RequestBuilder`、`ResultMatcher`、`ResultHandler`、`MvcResult`等。另外提供了几个静态工厂方法便于测试：`MockMvcBuilders`、`MockMvcRequestBuilders`、
+
+`MockMvcResultMatchers`、`MockMvcResultHandlers`。
+
+### 5.4.1 MockMvcBuilders
+
+MockMvcBuilder是用来构造MockMvc的构造器。主要创建两种测试环境：独立测试和集成的web测试。
+
+其中的`build()`方法，用于返回一个MockMVC对象。
+
+```java
+//build()方法返回一个MocMVC对象 
+MockMvc mockMvc = MockMvcBuilders.webAppContextSetup(wac).build();
+
+MockMvc mockMvc = MockMvcBuilders.standaloneSetup(new AllocConfigInfoController()).build();
+```
+
+
+
+### 5.4.2 MockMvc
+
+使用之前的MockMvcBuilder.build()得到构建好的MockMvc；这个是mvc测试的核心API。
+
+```java
+MvcResult result = mockMvc.perform(MockMvcRequestBuilders.get("/user/1"))  
+       .andExpect(MockMvcResultMatchers.view().name("user/view"))  
+       .andExpect(MockMvcResultMatchers.model().attributeExists("user"))  
+       .andDo(MockMvcResultHandlers.print())  
+       .andReturn(); 
+```
+
+`perform()`：执行一个RequestBuilder请求，会自动执行SpringMVC的流程并映射到相应的控制器执行处理；
+
+`andExpect()`：添加ResultMatcher验证规则，验证控制器执行完成后结果是否正确；
+
+`andDo()`：添加ResultHandler结果处理器，比如调试时打印结果到控制台；
+
+`andReturn()`：最后返回相应的MvcResult；然后进行自定义验证/进行下一步的异步处理；
+
+
+
+另外还提供了以下API：
+
+`setDefaultRequest()`：设置默认的RequestBuilder，用于在每次perform执行相应的RequestBuilder时自动把该默认的RequestBuilder合并到perform的RequestBuilder中；
+
+`setGlobalResultMatchers()`：设置全局的预期结果验证规则，如我们通过MockMvc测试多个控制器时，假设它们都想验证某个规则时，就可以使用这个；
+
+`setGlobalResultHandlers()`：设置全局的ResultHandler结果处理器；
+
+
+
+### 5.4.3 MockMvcRequestBuilders
+
+RequestBuilder是用来构建请求的。其提供了一个方法`buildRequest(ServletContext servletContext)`用于构建MockHttpServletRequest。
+
+主要有两个子类`MockHttpServletRequestBuilder`和`MockMultipartHttpServletRequestBuilder`（如文件上传使用），即用来Mock客户端请求需要的所有数据。
+
+### 5.4.4 ResultActions
+
+调用`MockMvc.perform(RequestBuilder requestBuilder)`后将得到`ResultActions`，通过`ResultActions`完成如下三件事：
+
+- `andExpect(ResultMatcher matcher)`：添加验证断言来判断执行请求后的结果是否是预期的；
+- `andDo(ResultHandler handler)`：添加结果处理器，用于对验证成功后执行的动作，如输出下请求/结果信息用于调试
+- `andReturn()`：返回验证成功后的MvcResult；用于自定义验证/下一步的异步处理
+
+### 5.4.5 MockMvcResultMatchers
+
+`ResultMatcher`用来匹配执行完请求后的结果验证，其就一个`match(MvcResult result)`断言方法，如果匹配失败将抛出相应的异常。
+
+### 5.4.6 MockMvcResultHandlers
+
+`ResultHandler`用于对处理的结果进行相应处理的，比如输出整个请求/响应等信息方便调试，Spring mvc测试框架提供了`MockMvcResultHandlers`静态工厂方法，该工厂提供了`ResultHandler print()`返回一个输出`MvcResult`详细信息到控制台的ResultHandler实现
+
+### 5.4.7 MvcResult
+
+即执行完控制器后得到的整个结果，并不仅仅是返回值，其包含了测试时需要的所有信息。
+
+`MockHttpServletRequest getRequest()`：得到执行的请求；s
+
+`MockHttpServletResponse getResponse()`：得到执行后的响应；
+
+
+
+参考文献：
+
+[Spring MVC框架详解](https://jinnianshilongnian.iteye.com/blog/2004660)
+
+[Spring MVC Test Framework](https://docs.spring.io/spring/docs/5.2.0.BUILD-SNAPSHOT/spring-framework-reference/testing.html#spring-mvc-test-framework)
+
+# 6. 日志
 
 ## 5.1、常用日志框架介绍
 
@@ -1019,6 +1295,19 @@ logging.level.root=WARN
 logging.level.org.springframework.web=DEBUG
 logging.level.org.hibernate=ERROR
 ```
+
+## 5.4、sl4j占位符的使用
+
+使用`{}`来进行占位操作。具体代码如下：
+
+```java
+log.info("获取审核人员信息的入参businessCode=[{}], auditStep=[{}]", businessCode, auditStep);
+
+[]在这里有什么作用？测试一下？
+
+```
+
+
 
 ## 5.4、自定义日志配置文件
 
@@ -1941,6 +2230,31 @@ private void postProcessBeforeInitialization(WebServerFactory webServerFactory) 
 
 ## 9.1  RestFul风格
 
+1）Restful - CRUD：CRUD满足Rest风格；
+
+URI：  /资源名称/资源标识       HTTP请求方式区分对资源CRUD操作
+
+|      | 普通CRUD（uri来区分操作） | RestfulCRUD       |
+| ---- | ------------------------- | ----------------- |
+| 查询 | getEmp                    | emp---GET         |
+| 添加 | addEmp?xxx                | emp---POST        |
+| 修改 | updateEmp?id=xxx&xxx=xx   | emp/{id}---PUT    |
+| 删除 | deleteEmp?id=1            | emp/{id}---DELETE |
+
+2）实验的请求架构;
+
+| 实验功能                             | 请求URI | 请求方式 |
+| ------------------------------------ | ------- | -------- |
+| 查询所有员工                         | emps    | GET      |
+| 查询某个员工(来到修改页面)           | emp/1   | GET      |
+| 来到添加页面                         | emp     | GET      |
+| 添加员工                             | emp     | POST     |
+| 来到修改页面（查出员工进行信息回显） | emp/1   | GET      |
+| 修改员工                             | emp     | PUT      |
+| 删除员工                             | emp/1   | DELETE   |
+
+**思考： 为什么开发中要使用restful风格呢？？？？？？？？？？？？？**
+
 ## 9.2  Swagger自动生成文档
 
 swagger 用于自动生成html文档的，在前后端分离开发中，有利于将自己开发的Rest服务界面化的提供给前端工程师。下面介绍如何使用
@@ -2088,6 +2402,10 @@ WireMock可以快速的伪造RestFuel服务。
 
 
 
+## 9.4 Mockito测试
+
+
+
 
 
 # 
@@ -2185,32 +2503,9 @@ public class MyMvcConfig implements WebMvcConfigurer {
 
 
 
-## Restful 风格
+## 
 
-1）Restful - CRUD：CRUD满足Rest风格；
 
-URI：  /资源名称/资源标识       HTTP请求方式区分对资源CRUD操作
-
-|      | 普通CRUD（uri来区分操作） | RestfulCRUD       |
-| ---- | ------------------------- | ----------------- |
-| 查询 | getEmp                    | emp---GET         |
-| 添加 | addEmp?xxx                | emp---POST        |
-| 修改 | updateEmp?id=xxx&xxx=xx   | emp/{id}---PUT    |
-| 删除 | deleteEmp?id=1            | emp/{id}---DELETE |
-
-2）实验的请求架构;
-
-| 实验功能                             | 请求URI | 请求方式 |
-| ------------------------------------ | ------- | -------- |
-| 查询所有员工                         | emps    | GET      |
-| 查询某个员工(来到修改页面)           | emp/1   | GET      |
-| 来到添加页面                         | emp     | GET      |
-| 添加员工                             | emp     | POST     |
-| 来到修改页面（查出员工进行信息回显） | emp/1   | GET      |
-| 修改员工                             | emp     | PUT      |
-| 删除员工                             | emp/1   | DELETE   |
-
-**思考： 为什么开发中要使用restful风格呢？？？？？？？？？？？？？**
 
 
 
@@ -2249,15 +2544,36 @@ public FormattingConversionService mvcConversionService() {
 
 
 
+## 7. 封装统一的返回结果
 
 
-# 10.Docker
 
-## 1、 简介
+# 三、云开发技术
+
+## 1. Docker
+
+### 1.1 简介
 
 **Docker**是一个开源的**应用容器引擎**；是一个轻量级容器技术；Docker支持将软件编译成一个镜像；然后在镜像中各种软件做好配置，将镜像发布出去，其他使用者可以直接使用这个镜像；运行中的这个镜像称为容器，容器启动是非常快速的。
 
-## 2、Docker 核心概念 
+Docker要求Centos的内核版本高于3.10
+
+查看Centos的内核版本：
+
+```properties
+uname -r
+# 如果内核版本过低，可以使用生升级
+yum update 
+
+# 安装docker
+yum install docker
+# 启动docker
+systemctl start docker
+```
+
+
+
+### 1.2 Docker 核心概念 
 
 **docker主机(Host)**：安装了Docker程序的机器（Docker直接安装在操作系统之上）；
 
@@ -2281,27 +2597,221 @@ public FormattingConversionService mvcConversionService() {
 
 4）对容器的启动停止就是对软件的启动停止；
 
-## Docker 安装
 
-Docker要求Centos的内核版本高于3.10
 
-查看Centos的内核版本：
+
+
+
+
+## 2. ElasticSearch
+
+
+
+# 四、开源组件包
+
+## 1. Apache Commons 
+
+### 1.1 Commons-lang
+
+```java
+<!-- apache-->
+<dependency>
+	<groupId>org.apache.commons</groupId>
+  <artifactId>commons-lang3</artifactId>
+  <version>3.8.1</version>
+</dependency>
+  
+```
+
+**输出任意长度的字符串**：
+
+```java
+/**
+* <p>Creates a random string whose length is the number of characters specified.</p>
+*   @param count  the length of random string to create
+*   @return the random string
+*/
+String filename= RandomStringUtils.randomAlphanumeric(10);
+ System.out.println(filename);
+```
+
+https://www.jianshu.com/p/820e7b004b48
+
+
+
+# Spring Testing
+
+`ReflectionTestUtils`：
+
+可以在测试时更改常量值，设置非公共字段，调用非公共setter方法或在测试应用序代码时调用非公共配置或生命周期回调方法的场景中使用这些方法。她可以在以下的场合使用：
+
+- 例如@Autowired，@Inject和@Resource，一般作用的字段为私有或受保护的，可以获取其非公有字段的值。
+
+
+
+## 集成测试的目标
+
+Spring集成测试主要支持以下目的：
+
+- 在测试之间管理Spring IoC容器缓存。
+- 提供测试实例的依赖注入。
+- 提供适合集成测试的事务管理。
+- 提供特定于Spring的基类，帮助开发人员编写集成测试
+
+### 1. 上下文管理和缓存
+
+Spring TestContext Framework提供Spring`ApplicationContext`实例和`WebApplicationContext`实例的一致加载以及这些上下文的缓存。支持缓存加载的上下文非常重要，因为启动时间可能会成为一个问题 - 不是因为Spring本身的开销，而是因为Spring容器实例化的对象需要时间来实例化。例如，具有50到100个Hibernate映射文件的项目可能需要10到20秒来加载映射文件，并且在每个测试夹具中运行每个测试之前产生该成本会导致整体测试运行速度变慢，从而降低开发人员的工作效率。
+
+**测试类通常需要声明 XML或Groovy配置元数据的资源位置（通常在类路径中，或者在的配置类中）**。
+
+默认情况下，**一旦加载，配置的`ApplicationContext`将重复用于每个测试**。因此，每个测试套件仅产生一次设置成本，并且后续测试执行要快得多。在此上下文中，术语“测试套件”表示所有测试都在同一JVM中运行 - 例如，所有测试都是针对给定项目或模块从Ant，Maven或Gradle构建的。在不太可能的情况下，测试会破坏应用程序上下文并需要重新加载（例如，通过修改bean定义或应用程序对象的状态），可以将TestContext框架配置为在执行下一个之前重新加载配置并重建应用程序上下文测试。
+
+## 注解
 
 ```properties
-uname -r
-# 如果内核版本过低，可以使用生升级
-yum update 
+@ContextConfiguration: 声明应用程序上下文资源位置或用于加载上下文的带注释的类
 
-# 安装docker
-yum install docker
-# 启动docker
-systemctl start docker
+@WebAppConfiguration: 作用在测试类上确保加载的是WebApplicationContext，默认加载src/main/webapp下的资源，在后台使用资源基本路径来创建MockServletContext，它充当测试的WebApplicationContext的ServletContext。
+
+@ContextHierarchy
+
+@ActiveProfiles
+
+@TestPropertySource
+
+@DirtiesContext
+
+@TestExecutionListeners
+
+@Commit
+
+@Rollback
+
+@BeforeTransaction
+
+@AfterTransaction
+
+@Sql
+
+@SqlConfig
+
+@SqlGroup
+```
+
+```java
+@ContextConfiguration("/test-config.xml") 
+或者
+@ContextConfiguration(classes = TestConfig.class)
+public class XmlApplicationContextTests {
+    // class body...
+}
 ```
 
 
 
-# 11.开源组件包
+# 五、延伸知识
 
-## 11.1 Apache Commons 
+## 5.1 正向代理和反向代理
 
-https://www.jianshu.com/p/820e7b004b48
+### 5.1.1 正向代理
+
+正向代理，**代理的是客户端**。为了从原始服务器取得内容，客户端向代理服务器发送一个请求，并且指定目标服务器，代理服务器转发请求到目标服务器，并且将获得的内容返回给客户端。从用户角度出发，正向代理**需要客户端进行一些特别的设置才能使用**。最常见的使用场景的就是**翻墙**。
+
+### 5.1.2 反向代理
+
+反向代理，**代理的是服务端**，为服务器收发请求，并进行路由分发，使真实服务器对客户端不可见。反向代理**不需要你做任何设置**，直接访问服务器真实ip或者域名，但是服务器内部会自动根据访问内容进行跳转及内容返回，你不知道它最终访问的是哪些机器。
+
+Nginx作为时下最流行的HTTP服务器之一，同时它是一个反向代理服务器。
+
+### 5.1.3 区别
+
+从上面的描述也能看得出来正向代理和反向代理有以下几点不同：
+
+- **代理对象不同**。正向代理，代理的客户端；反向代理，代理的是服务端。
+- **用户操作不同**。正向代理，需要用户进行设置；反向代理不需要。
+- **是否指定目标服务器**。正向代理，有明确的访问目标；反向代理，打到代理服务器，由代理服务器进行路由分发，这个阶段对客户端是透明的。
+
+
+
+![](images/屏幕快照 2019-07-12 11.09.25.png)
+
+正向代理中，proxy和client同属一个LAN，对server透明； 
+
+反向代理中，proxy和server同属一个LAN，对client透明。
+
+实际上proxy在两种代理中做的事都是代为收发请求和响应，不过从结构上来看正好左右互换了下，所以把前者那种代理方式叫做正向代理，后者叫做反向代理。
+
+
+
+用途上的区分：
+
+- 正向代理：正向代理用途是为了在防火墙内的局域网提供访问internet的途径。另外还可以使用缓冲特性减少网络使用率。
+- 反向代理：反向代理的用途是将防火墙后面的服务器提供给internet用户访问。同时还可以完成诸如负载均衡等功能。
+
+
+
+从安全性来讲：
+
+- 正向代理：正向代理允许客户端通过它访问任意网站并且隐蔽客户端自身，因此你必须采取安全措施来确保仅为经过授权的客户端提供服务。
+- 反向代理：对外是透明的，访问者并不知道自己访问的是代理。对访问者而言，他以为访问的就是原始服务器。
+
+参考文献：
+
+[正向代理和反向代理](https://www.jianshu.com/p/208c02c9dd1d)
+
+[Nginx正向代理和反向代理](https://www.jianshu.com/p/ae76c223c6ef)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
