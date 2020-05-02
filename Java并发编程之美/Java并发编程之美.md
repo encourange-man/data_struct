@@ -889,7 +889,501 @@ Fork/Join使用两个类来完成以上两件事情：
 
 任务分割出的子任务会添加到当前工作线程所维护的双端队列中，进入队列的头部。当一个工作线程的队列里暂时没有任务时，它会随机从其他工作线程的队列的尾部获取一个任务
 
-```java
+​		下面通过计算1+2+3...+100来展示Fork/Join的使用。方法继承RecursiveTask实现了其computer()方法，在这个方法里，首先需要判断任务是否足够小，如果足够小就直接执行任务。如果不足够小，就必须分割成两个子任务，每个子任务在调用fork方法时，又会进入compute方法，看看当前子任务是否需要继续分割成子任务，如果不需要继续分割，则执行当前子任务并返回结果。使用join方法会等待子任务执行完并得到其结果
 
+```java
+/**
+ * 使用fork/join框架，计算1+2+3...+100
+ * -因为每次拆后是有返回值的，所及需要继承RecursiveTask
+ *
+ * @author machen
+ */
+public class ForkJoinDemo extends RecursiveTask<Integer> {
+    /**
+     * 拆分的每个子任务的大小(每10个的相加)
+     */
+    private final Integer THRESHOLD = 10;
+
+    private Integer start;
+    private Integer end;
+
+    public ForkJoinDemo(Integer start, Integer end) {
+        this.start = start;
+        this.end = end;
+    }
+
+    /**
+     * 使用归并的思想实现计算逻辑
+     *
+     * @return the result of the computation
+     */
+    @Override
+    protected Integer compute() {
+        //记录子任务的结果
+        int sum = 0;
+        //子任务大小如果满足阀值，则进行计算逻辑；不满足则继续进行拆分
+        if ((end - start) <= THRESHOLD) {
+            for (int i = start; i <= end; i++) {
+                sum += i;
+            }
+        } else {
+            //继续拆分子任务
+            int middle = (start + end) / 2;
+            ForkJoinDemo leftFork = new ForkJoinDemo(start, middle);
+            ForkJoinDemo rightFork = new ForkJoinDemo(middle + 1, end);
+
+            //执行子任务
+            leftFork.fork();
+            rightFork.fork();
+
+            //获取子任务的执行结果
+            Integer leftJoinResult = leftFork.join();
+            Integer rightJoinResult = rightFork.join();
+
+            //合并子任务的结果
+            sum = leftJoinResult + rightJoinResult;
+        }
+        return sum;
+    }
+
+    public static void main(String[] args) {
+        ForkJoinPool forkJoinPool = new ForkJoinPool();
+        System.out.println("poolSize: " + forkJoinPool.getPoolSize());
+
+        //执行任务
+        ForkJoinDemo forkJoinDemo = new ForkJoinDemo(1, 100);
+        ForkJoinTask<Integer> submit = forkJoinPool.submit(forkJoinDemo);
+        try {
+          //在执行的时候可能会抛出异常，但是我们没办法在主线程里直接捕获异常
+          //isCompletedAbnormally()方法来检查任务是否已经抛出异常或已经被取消了
+           if(submit.isCompletedAbnormally()) {
+            		//isCompletedAbnormally()方法来检查任务是否已经抛出异常或已经被取消了
+                System.out.println("error:"+ submit.getException());
+            }
+            System.out.println(submit.get());
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        } catch (ExecutionException e) {
+            e.printStackTrace();
+        }
+    }
+}
 ```
 
+### 3.3.4 Fork/Join的实现原理【todo】
+
+
+
+# 4. Java并发工具类
+
+## 4.1 CountDownLatch 等待多线程完成
+
+==**CountDownLatch： 允许一个或多个线程等待其他线程完成操作。**==
+
+​		在日常开发中经常会遇到需要**在主线程中开启多个线程去并行执行任务**，并且**主线程需要等待所有子线程执行完毕后再进行汇总的场景**。在CountDownLatch出现之前一般都使用线程的**join（）**方法来实现这一点，但是**join方法不够灵活，不能够满足不同场景的需要**，所以JDK开发组提供了CountDownLatch这个类，我们前面介绍的例子使用CountDownLatch会更优雅。
+
+<img src="images/BF9CFC7AD2224E45844361C6A4F2049F.gif" style="zoom:50%;" />
+
+​		假如我们要解析一个excel，一个excel可能有多个sheet，所有主线程中开辟多个子线程去解析不同的sheet，个个子线程执行完毕后，主线程在做最后的处理，这里就需要主线程等待所有子线程执行完毕。下面通过`join()`来演示这个过程：
+
+```java
+public static void main(String[] args) throws InterruptedException {
+        Thread thread1 = new Thread(()->{
+            System.out.println("thread1 parse1 sheet1");
+        });
+
+        Thread thread2 = new Thread(()->{
+            System.out.println("thread2 parse2 sheet2");
+        });
+
+        thread1.start();
+        thread2.start();
+        thread1.join();
+        thread2.join();
+
+        System.out.println("主线程解析excel完成");
+    }
+```
+
+------
+
+**join()的实现原理**：
+
+​		其实现原理是不停检查join线程是否存活，如果join线程存活则让当前线程永远等待。其中，wait（0）表示永远等待下去。直到join线程中止后，线程的this.notifyAll()方法会被调用，调用notifyAll()方法是在JVM里实现的，所以在JDK里看不到
+
+```java
+while (isAlive()) {
+  	wait(0);
+}
+```
+
+------
+
+### 4.1.1 操作指南
+
+- **new CountDownLatch(int count);**
+
+  创建`CountDownLatch`对象，初始化同步状态数量。注意：如果初始化的数量大实际的数量，主线程将会一直处于等待状态。
+
+-  **countDownLatch.countDown();**
+
+  子线程每次完成任务后执行`countDown()`方法，同步状态将会减1，直到减为0，主线程将会被唤醒。
+
+- **countDownLatch.await()**
+
+  主线程执行`awai()`方法将会一直处于等待状态，直到同步状态为0是，才会被唤醒。
+
+### 4.1.2 实现原理【todo】
+
+
+
+## 4.2 回环屏障CyclicBarrier
+
+**==CyclicBarrier==: 成为回环屏障，它可以让一组线程全部达到一个状态后再全部同时执行。之所以叫作回环是因为当所有等待线程执行完毕，并重置CyclicBarrier的状态后它可以被重用；之所以叫作屏障是因为线程调用await方法后就会被阻塞，这个阻塞点就称为屏障点，等所有线程都调用了await方法后，线程们就会冲破屏障，继续向下运行。**
+
+<img src="images/640.gif" style="zoom:50%;" />
+
+### 4.2.1 操作指南
+
+```java
+//其参数表示屏障拦截的线程数量
+CyclicBarrier(int parties)
+ 
+//创建一个新的 CyclicBarrier，它将在给定数量的参与者（线程）处于等待状态时启动，并在启动 barrier 时执行给定的屏障操作，该操作由最后一个进入 barrier 的线程执行。
+CyclicBarrier(int parties, Runnable barrierAction)
+ 
+//所有参与者调用await方法，将会一直等待。
+int await()
+ 
+//所有参与者调用await方法，将会一直等待。或者超出了指定的等待时间。
+int await(long timeout, TimeUnit unit)
+ 
+//返回当前在屏障处等待的参与者数目。
+int getNumberWaiting()
+ 
+//返回要求启动此 barrier 的参与者数目。
+int getParties()
+ 
+//查询此屏障是否处于损坏状态。
+boolean isBroken()
+ 
+//将屏障重置为其初始状态
+void reset()
+```
+
+
+
+### 4.2.2 CyclicBarrier的应用场景
+
+**场景1演示: 只有当多个线程都到达同一个功能点时，所有的线程才能继续执行。**
+
+```java
+public class CyclicBarrierDemo {
+    private static CyclicBarrier cyclicBarrier = new CyclicBarrier(5);
+
+    public static void main(String[] args) {
+        for (int i = 0; i < 5; i++) {
+            new InnerThread().start();
+        }
+
+    }
+    static class InnerThread extends Thread{
+        @Override
+        public void run() {
+            try {
+                System.out.println(Thread.currentThread().getName() + " wait for CyclicBarrier.");
+
+                // cout计数器减1，直到减到0
+                cyclicBarrier.await();
+
+                // cb的参与者数量等于5时，才继续往后执行
+                System.out.println(Thread.currentThread().getName() + " continued.");
+            } catch (BrokenBarrierException e) {
+                e.printStackTrace();
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+        }
+    }
+}
+
+//输出
+Thread-0 wait for CyclicBarrier.
+Thread-1 wait for CyclicBarrier.
+Thread-2 wait for CyclicBarrier.
+Thread-3 wait for CyclicBarrier.
+Thread-4 wait for CyclicBarrier.
+Thread-4 continued.
+Thread-0 continued.
+Thread-1 continued.
+Thread-2 continued.
+Thread-3 continued.
+```
+
+### 
+
+### 4.2.3 CyclicBarrier的实现原理【todo画图解析过程】
+
+<img src="images/clipboard1.png" style="zoom:100%;" />
+
+ 	可以看到CyclicBarrier内部是通过**条件队列trip**来对线程进行阻塞的，并且其内部维护了两个int型的变量 `parties` 和` count` ，parties表示**每次拦截的线程数**，该值在构造时进行赋值。count是**内部计数器**，**它的初始值和parties相同，以后随着每次await方法的调用而减1，直到减为0就将所有线程唤醒**。 
+
+​    在CyclicBarrier中，同一批的线程属于同一代，即同一个`Generation`，该类的对象代表栅栏的当前代，就像玩游戏时代表的本局游戏，**利用它可以实现循环等待**。**当有parties个线程到达barrier，generation就会被更新换代。**
+
+​    `barrierCommand`表示**换代前执行的任务**，**当count减为0时表示本局游戏结束，需要转到下一局。在转到下一局游戏之前会将所有阻塞的线程唤醒**，在唤醒所有线程之前你可以通过指定barrierCommand来执行自己的任务。
+
+
+
+核心方法`awit()`解析
+
+```java
+//wait()方法内部调用的是dowait()方法
+private int dowait(boolean timed, long nanos)
+    throws InterruptedException, BrokenBarrierException,
+           TimeoutException {
+ 
+    final ReentrantLock lock = this.lock;
+    // 获取“独占锁(lock)”
+    lock.lock();
+    try {
+        // 保存“当前的generation”
+        final Generation g = generation;
+ 
+        // 若“当前generation已损坏”，则抛出异常。
+        if (g.broken)
+            throw new BrokenBarrierException();
+ 
+        // 如果当前线程被中断，则通过breakBarrier()终止CyclicBarrier，唤醒CyclicBarrier中所有等待线程。
+        if (Thread.interrupted()) {
+            breakBarrier();
+            throw new InterruptedException();
+        }
+ 
+       // 将“count计数器”-1
+       int index = --count;
+       // 如果index=0，表示有parties个线程到达barrier。
+       if (index == 0) {  // tripped
+           boolean ranAction = false;
+           try {
+               // 如果barrierCommand不为null，则执行该动作。
+               final Runnable command = barrierCommand;
+               if (command != null)
+                   command.run();
+               ranAction = true;
+               // 唤醒所有等待线程，并更新generation。
+               nextGeneration();
+               return 0;
+           } finally {
+               if (!ranAction)
+                   breakBarrier();
+           }
+       }
+ 
+        // 当前线程一直阻塞，直到有parties个线程到达barrier 或 当前线程被中断 或 超时这3者之一发生，
+        // 当前线程才继续执行。
+        for (;;) {
+            try {
+                // 如果不是“超时等待”，则调用awati()进行等待；否则，调用awaitNanos()进行等待。
+                if (!timed)
+                    trip.await();
+                else if (nanos > 0L)
+                    nanos = trip.awaitNanos(nanos);
+            } catch (InterruptedException ie) {
+                // 如果等待过程中，线程被中断，则执行下面的函数。
+                if (g == generation && ! g.broken) {
+                    breakBarrier();
+                    throw ie;
+                } else {
+                    Thread.currentThread().interrupt();
+                }
+            }
+ 
+            // 如果“当前generation已经损坏”，则抛出异常。
+            if (g.broken)
+                throw new BrokenBarrierException();
+ 
+            // 如果“generation已经换代”，则返回index。
+            if (g != generation)
+                return index;
+ 
+            // 如果是“超时等待”，并且时间已到，则通过breakBarrier()终止CyclicBarrier，唤醒CyclicBarrier中所有等待线程。
+            if (timed && nanos <= 0L) {
+                breakBarrier();
+                throw new TimeoutException();
+            }
+        }
+    } finally {
+        // 释放“独占锁(lock)”
+        lock.unlock();
+    }
+}
+```
+
+
+
+
+
+## 4.3 CyclicBarrier和CountDownLatch的区别 
+
+-   **CountDownLatch的作用是允许1或N个线程等待其他线程完成执行；而CyclicBarrier则是允许N个线程相互等待**。
+- **CountDownLatch的计数器无法被重置；CyclicBarrier的计数器可以被重置后使用，因此它被称为是循环的barrier**。
+
+这两个类都可以实现一组线程在到达某个条件之前进行等待，它们内部都有一个计数器，当计数器的值不断的减为0的时候所有阻塞的线程将会被唤醒。
+
+
+
+## 4.4 控制并发线程数的Semaphore
+
+
+
+## 4.5 线程间交换数据的Exchanger
+
+
+
+# 5. Java线程池
+
+几乎所有需要异步或并发执行任务的程序都可以使用线程池，合理地使用线程池能够带来3个好处。
+
+- **降低资源消耗**。通过重复利用已创建的线程降低线程创建和销毁造成的消耗。
+- **提高响应速度**。当任务到达时，任务可以不需要等到线程创建就能立即执行
+- **提高线程的可管理性**。线程是稀缺资源，如果无限制地创建，不仅会消耗系统资源，还会降低系统的稳定性，使用线程池可以进行统一分配、调优和监控。但是，要做到合理利用线程池，必须对其实现原理了如指掌。
+
+
+
+## 5.1 线程池的实现原理
+
+![](images/WX20200329-180346@2x.png)
+
+从图中可以看出，当提交一个新任务到线程池时，线程池的**主要处理流程**如下：
+
+1. **线程池判断核心线程池是否已经满**。如果不是，则创建一个新的工作线程来执行任务。如果核心线程池里的线程都在执行任务，则进入下个流程
+2. **核心线程池满了，判断工作队列是否已经满了**。如果工作队列没有满，则将新提交的任务添加到工作队列里。如果工作队列满了，则进入下个流程。
+3. **如果工作队列也满了**，则交给饱和策略来处理这个任务。
+
+<img src="images/WX20200329-181803@2x.png" style="zoom:50%;" />
+
+==**ThreadPoolExecutor执行execute的详细执行过程**：==
+
+1）**线程池运行的线程数小于corePoolSize**。则创建新线程来执行任务，（注意，执行这一步骤需要获取全局锁）
+
+2）**线程池运行的线程数等于或大于corePoolSize**。则将任务加入BlockingQueue。
+
+3）**如果阻塞队列已经满了**，则创建新的线程来处理任务，（注意，执行这一步骤需要获取全局锁）
+
+4）**如果创建新线程将使当前运行的线程超出maximumPoolSize**，任务将被拒绝，并调用RejectedExecutionHandler.rejectedExecution()方法。
+
+
+
+​		ThreadPoolExecutor采取上述步骤的总体设计思路，是为了在执行execute()方法时，尽可能地避免获取全局锁（那将会是一个严重的可伸缩瓶颈）。在ThreadPoolExecutor完成预热之后（当前运行的线程数大于等于corePoolSize），几乎所有的execute()方法调用都是执行步骤2，而步骤2不需要获取全局锁。
+
+
+
+## 5.2 操作指南
+
+### 1.线程池的创建
+
+```java
+new ThreadPoolExecutor(coreThreadSize, maxPoolSize, keepAliveTime, 	      TimeUnit.MILLISECONDS, new LinkedBlockingQueue<Runnable>(),handler);
+```
+
+参数说明：
+
+**1）corePoolSize（线程池的基本大小）**：当提交一个任务到线程池时，线程池会创建一个线程来执行任务，即使其他空闲的基本线程能够执行新任务也会创建线程，等到需要执行的任务数大于线程池基本大小时就不再创建。
+
+**2）maximumPoolSize（线程池最大数量）**：线程池允许创建的最大线程数。如果队列满了，并且已创建的线程数小于最大线程数，则线程池会再创建新的线程执行任务。值得注意的是，如果使用了无界的任务队列这个参数就没什么效果。
+
+**3）runnableTaskQueue（任务队列）**：用于保存等待执行的任务的阻塞队列。
+
+- ​	`ArrayBlockingQueue`：是一个基于数组结构的有界阻塞队列，此队列按FIFO（先进先出）原则对元素进行排序。
+- `LinkedBlockingQueue`：一个基于链表结构的阻塞队列，此队列按FIFO排序元素，吞吐量通常要高于ArrayBlockingQueue。静态工厂方法Executors.newFixedThreadPool()使用了这个队列。
+- `SynchronousQueue`：一个不存储元素的阻塞队列。每个插入操作必须等到另一个线程调用移除操作，否则插入操作一直处于阻塞状态，吞吐量通常要高于Linked-BlockingQueue，静态工厂方法Executors.newCachedThreadPool使用了这个队列。
+- `PriorityBlockingQueue`：一个具有优先级的无限阻塞队列。
+
+**4）ThreadFactory**：用于设置创建线程的工厂，可以通过线程工厂给每个创建出来的线程设置更有意义的名字。
+
+**5）RejectedExecutionHandler（饱和策略）**：当队列和线程池都满了，将会采取一种策略处理提交的新任务。这个策略默认情况下是AbortPolicy，表示无法处理新任务时抛出异常。在JDK 1.5中Java线程池框架提供了以下4种策略。
+
+- **AbortPolicy**：直接抛出异常。
+- **CallerRunsPolicy**：只用调用者所在线程来运行任务。
+- **DiscardOldestPolicy**：丢弃队列里最近的一个任务，并执行当前任务。
+- **DiscardPolicy**：不处理，丢弃掉。
+
+**6）keepAliveTime（线程活动保持时间）**：线程池的工作线程空闲后，保持存活的时间。所以，如果任务很多，并且每个任务执行的时间比较短，可以调大时间，提高线程的利用率。
+
+**7）TimeUnit（线程活动保持时间的单位）**：可选的单位有天（DAYS）、小时（HOURS）、分钟（MINUTES）、毫秒（MILLISECONDS）、微秒（MICROSECONDS，千分之一毫秒）和纳秒（NANOSECONDS，千分之一微秒）。
+
+
+
+### 2.线程池提交任务
+
+可以使用两个方法向线程池提交任务，分别为`execute()`和`submit()`方法。两者的区别在于：
+
+- **execute()**：用于提交不需要返回值的任务，所以无法判断任务是否被线程池执行成功。
+- **submit()**：用于提交需要返回值的任务，线程池会返回一个future类型的对象，通过这个future对象可以判断任务是否执行成功，并且可以通过future的get()方法来获取返回值，**get()方法会阻塞当前线程直到任务完成**。
+
+
+
+### 3.关闭线程
+
+​	可以通过调用线程池的`shutdown`或`shutdownNow`方法来关闭线程池。它们的原理是遍历线程池中的工作线程，然后逐个调用线程的interrupt方法来中断线程，所以无法响应中断的任务可能永远无法终止。他们的区别在于：
+
+- **shutdownNow()**: 首先将线程池的状态设置成STOP，然后尝试停止所有的正在执行或暂停任务的线程，并返回等待执行任务的列表
+- **shutdown()**：只是将线程池的状态设置成SHUTDOWN状态，然后**中断所有没有正在执行任务的线程**。通常调用shutdown方法来关闭线程池。
+
+------
+
+**注意：**
+
+​		**使用线程池创建线程后，一定要关闭线程池。**
+
+------
+
+
+
+### 4.线程池的监控
+
+​		如果在系统中大量使用线程池，则有必要对线程池进行监控，方便在出现问题时，可以根据线程池的使用状况快速定位问题。可以通过线程池提供的参数进行监控，在监控线程池的时候可以使用以下属性。
+
+-  **taskCount**：线程池需要执行的任务数量。
+- **completedTaskCount**：线程池在运行过程中已完成的任务数量，小于或等于taskCount。
+- **largestPoolSize**：线程池里曾经创建过的最大线程数量。通过这个数据可以知道线程池是否曾经满过。如该数值等于线程池的最大大小，则表示线程池曾经满过。
+- **getPoolSize**：线程池的线程数量。如果线程池不销毁的话，线程池里的线程不会自动销毁，所以这个大小只增不减。
+- **getActiveCount**：获取活动的线程数。
+
+​      通过扩展线程池进行监控。可以通过继承线程池来自定义线程池，重写线程池的`beforeExecute`、`afterExecute`和`terminated`方法，**也可以在任务执行前、执行后和线程池关闭前执行一些代码来进行监控**。例如，监控任务的平均执行时间(线程执行后的时间减去执行前的时间)、最大执行时间和最小执行时间等。这几个方法在线程池里是空方法。
+
+
+
+# 6. Exector框架
+
+​		在Java中，使用线程来异步执行任务。Java线程的创建与销毁需要一定的开销，如果我们为每一个任务创建一个新线程来执行，这些线程的创建与销毁将消耗大量的计算资源。同时，为每一个任务创建一个新线程来执行，这种策略可能会使处于高负荷状态的应用最终崩溃。
+
+​	Java的线程既是工作单元，也是执行机制。从**JDK 5开始，把工作单元与执行机制分离开来**。**工作单元包括Runnable和Callable，而执行机制由Executor框架提供**。
+
+## 6.1 Executor框架介绍
+
+### 6.1.1 Executor框架的两极调度模型
+
+​		在**HotSpot VM**的线程模型中，**Java线程（java.lang.Thread）被一对一映射为本地操作系统线程**。**Java线程启动时会创建一个本地操作系统线程**；当该Java线程终止时，这个操作系统线程也会被回收。操作系统会调度所有线程并将它们分配给可用的CPU。
+
+​		**在上层**，Java多线程程序**通常把应用分解为若干个任务**，然后使用用户级的**调度器**（Executor框架）**将这些任务映射为固定数量的线程**；在**底层**，**操作系统内核将这些线程映射到硬件处理器上**。这种调度模式就如同下面这样：
+
+<img src="images/WX20200403-142515@2x.png" style="zoom:40%;" />
+
+### 6.1.2 Executor框架结构和成员
+
+Executor框架主要由3大部分组成如下:
+
+- **Task(任务)**：包括被执行任务需要。实现的接口：Runnable接口或Callable接口。
+- **任务的执行**：包括任务执行机制的核心接口Executor，以及继承自Executor的ExecutorService接口和ThreadPoolExecutor和ScheduledThreadPoolExecutor。
+- **异步计算的结果**：包括接口Future和实现Future接口的FutureTask类
+
+<img src="images/WX20200403-151841.png" style="zoom:100%;" />
+
+![](images/WX20200403-152238.png)
+
+<img src="images/WX20200403-153816@2x.png" style="zoom:50%;" />
+
+Executor的主要成员有如下：
+
+- 
