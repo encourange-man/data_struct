@@ -103,17 +103,30 @@ public static final int value = 123;
 
 # 二.运行时数据区
 
+<img src="imges/WX20200506-173440@2x.png" style="zoom:40%;" />
+
+
+
 ## 2.1堆
 
 HotSpot JVM堆的内存分布图：
 
-![](imges/WX20200419-221245.png)
+<img src="imges/WX20200506-173649@2x.png" style="zoom:40%;" />
+
+- **Young区(新声代)**：是用来存放新生的对象，一般占据堆的 1/3 空间。年轻代有细分下面几个区域
+- **Eden区**：新对象的出生地(新创建的对象很大，会直接进入老年代)。**当Eden区内存不足时会触发`Minor GC`**
+- **ServivorFrom**： 上一次GC的幸运者，作为这一次GC被扫描的对象
+- **ServivorTo**：保留一次`Minor GC`过程中的幸存者。
+
+
+
+
 
 
 
 ## 2.2 方法区
 
-方法区是`线程共享`的内存区域。
+方法区是`线程共享`的内存区域。在 Java8 中，永久代已经被移除，被一个称为`MateSpace`的区域所取代
 
 
 
@@ -481,4 +494,31 @@ MAT插件会给出一份可疑的分析报告，我们只需要结合源代码�
 
 
 分析目前现状，抛出问题，集中思考。。。
+
+
+
+
+
+```java
+public class UploadBean {
+    private String bucket;  //bucket
+    private String key;
+    private String acl;
+    private String fileName;   //key
+    private byte[] content;   //content
+    private String source;
+}
+  
+public class SignField {
+    private String accessKey;        //  jn5tB9Et1byEGg1vc-d
+    private String secretKey;          //  zg7ugYrm3_bEcA2toBbb74TdNCeMK753LW6MgiX3
+    private HttpMethodTypeEnum httpMethod; //post   
+    private Headers headers;
+    private String contentType;         //multipart/form-data
+    private String path;                //api/upload
+    private String date = DateUtil.getGMTTime(new Date());
+    private TreeMap<String, String> body; //acl, bucket
+    private String expiredTime;
+}
+```
 
