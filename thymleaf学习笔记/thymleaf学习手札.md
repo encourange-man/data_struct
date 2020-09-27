@@ -130,7 +130,7 @@ thymleaf默认的消息处理器，会在```/WEB-INF/templates/home.html``` **�
 spring.messages.basename=i18n.login
 ```
 
-![/images/2018-12-16_163019.png](/images/2018-12-16_163019.png)
+![images/2018-12-16_163019.png](images/2018-12-16_163019.png)
 
 #### 2) 为properteis添加变量
 
@@ -401,7 +401,7 @@ gt ( > ), lt ( < ), ge ( >= ), le( <= ),not ( ! ), eq ( == ), neq / ne ( != )
 
 # 6、属性的优先级
 
-![](/images/2018-12-17_004401.png)
+![](images/2018-12-17_004401.png)
 
 # 7、内联表达式
 
