@@ -1,5 +1,7 @@
 # 前言
 
+[TOC]
+
 此学习笔记是参考与springboot2.1.2官方文档的，然后他的系统需要：
 
 |          | 版本              |
@@ -903,7 +905,7 @@ java -jar spring-boot-02-config-02-0.0.1-SNAPSHOT.jar --server.port=8087  --serv
   
 
 		现今，Java日志领域被划分为两大阵营：**Commons Logging**阵营和**Slf4j**阵营。 Commons Logging在Apache大树的笼罩下，有很大的用户基数 。但是sl4j目前发展的比较好。所以推荐使用sl4j。
-
+	
 		Commons Logging和Sl4j是门面接口，而Log4j和Logback是具体的实现。比较常见的组合是**```logback + sl4j```** 和**```Commons Loggin + log4j```**。**Logback必须配合Slf4j使用。由于Logback和Slf4j是同一个作者，其兼容性不言而喻** 。
 
 [日志框架的前世今生](https://www.cnblogs.com/chenhongliang/p/5312517.html)
