@@ -173,6 +173,10 @@ Spring Boot了**`@Conditional`**注解，可根据**是否满足指定条件来�
 
 有个遗留问题：扫描到了自动配置了，IOC容器到底是个什么？Map？
 
+### SpringApplication实例化流程
+
+![](images/QQ20210411-220429.png)
+
 ```java
 @SpringBootApplication
 public class GiantServerApplication {
@@ -181,13 +185,93 @@ public class GiantServerApplication {
         SpringApplication.run(GiantServerApplication.class, args);
     }
 }
+
+//SpringApplication对象的构造方法
+//primarySources：springboot入口引导类
+public SpringApplication(ResourceLoader resourceLoader, Class<?>... primarySources) {
+    this.resourceLoader = resourceLoader;
+		Assert.notNull(primarySources, "PrimarySources must not be null");
+		this.primarySources = new LinkedHashSet<>(Arrays.asList(primarySources));
+		//推断Web应用类型
+    this.webApplicationType = WebApplicationType.deduceFromClasspath();
+		//加载并初始化ApplicationContextInitialize类型的所有配置类，并赋值成员变量List<ApplicationContextInitializer<?>> initializers
+    setInitializers((Collection) getSpringFactoriesInstances(ApplicationContextInitializer.class));
+		//加载并初始化ApplicationListener
+    setListeners((Collection) getSpringFactoriesInstances(ApplicationListener.class));
+		//推断main方法Class类
+    this.mainApplicationClass = deduceMainApplicationClass();
+	}
 ```
 
 
 
+#### web应用类型判断原则：
+
+- 当`DispatcherHandler`存在，并且`DispatcherServlet`和`ServletContainer`都不存在，则返回类型为**`WebApplicationType.REACTIVE`**
+
+- 当`SERVLET`或`ConfigurableWebApplicationContext`任何一个不存在时，说明当前应用为非Web应用，返回**`WebApplicationType.NONE`。**
+
+- 当应用不为`REACTIVE Web`应用，并且`SERVLET`和`ConfigurableWebApplicationContext`都存在的情况下，则为`SERVLET的Web`应用，返回**`WebApplicationType.SERVLET`。**
+
+  
+
+#### ApplicationContextInitializer加载并初始化
+
+`ApplicationContextInitializer`是Spring IOC容器提供的一个接口，**它是一个回调接口，主要目的是允许用户在`ConfigurableApplicationContext`类型（或其子类型）的`ApplicationContext`做`refresh`方法调用刷新之前，对`ConfigurableApplicationContext`实例做进一步的设置或处理，通常用于应用程序上下文进行编程初始化的Web应用程序中**。
 
 
-##  ## Spring Boot运行流程分析
+
+在完成了Web应用类型推断之后，`ApplicationContextInitializer`便开始进行加载工作，**Spring boot会加载并实例化 META-INF/spring.factories文件中`ApplicationContextInitializer`的所有配置类（并排序，去重）。**
+
+```java
+private <T> Collection<T> getSpringFactoriesInstances(Class<T> type) {
+		return getSpringFactoriesInstances(type, new Class<?>[] {});
+}
+
+private <T> Collection<T> getSpringFactoriesInstances(Class<T> type, Class<?>[] parameterTypes, Object... args) {
+    ClassLoader classLoader = getClassLoader();
+    //还是获取META-INF/spring.factories文件中注册的ApplicationContextInitializer类型对应配置类的权限定名，并去重 
+    Set<String> names = new LinkedHashSet<>(SpringFactoriesLoader.loadFactoryNames(type, classLoader));
+    //获取到配置类的全限定名后，进行实例化操作
+    List<T> instances = createSpringFactoriesInstances(type, parameterTypes, classLoader, args, names);
+    //排序
+    AnnotationAwareOrderComparator.sort(instances);
+    //返回排序后的实例化后的配置类集合（ApplicationContextInitializer类型集合）
+    return instances;
+}
+
+```
+
+下面贴一段META-INF/spring.factories目录中，ApplicationContextInitialize配置类：
+
+```properties
+org.springframework.context.ApplicationContextInitializer=\
+org.springframework.boot.autoconfigure.SharedMetadataReaderFactoryContextInitializer,\
+org.springframework.boot.autoconfigure.logging.ConditionEvaluationReportLoggingListener
+
+```
+
+
+
+#### ApplicationListener加载
+
+当容器初始化完成之后，需要处理一些如数据的加载、初始化缓存、特定任务的注册等操作， 可以通过Spring的事件传播机制来实现。
+
+
+
+Spring事件传播机制是基于**观察者模式（Observer）**实现的。比如，在`ApplicationContext`管理`Bean`生命周期的过程中，会将一些改变定义为事件（**`ApplicationEvent`**）。`ApplicationContext`通过`ApplicationListener`监听`ApplicationEvent`，当事件被发布之后，`ApplicationListener`用来对事件做出具体的操作。
+
+如果容器中存在`ApplicationListener`的Bean，当`ApplicationContext`调用`publishEvent`方法时，对应的Bean会被触发。
+
+
+
+`ApplicationListener`的加载过程同`ApplicationContextInitializer`一样，这里不在过多的重复。
+
+
+
+### Spring Boot运行流程分析
+
+当`SpringApplication`对象被创建之后，通过调用其`run`方法来进行`Spring Boot`的启动和运行，至此正式开启了`SpringApplication`的生命周期。
 
 
 
