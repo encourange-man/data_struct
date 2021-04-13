@@ -4,9 +4,37 @@ IOC的设计思想，是通过专门的对象容器来创建和维护对象。�
 
 **控制反转是一种软件设计模式，其遵循了软件工程中的依赖倒置原则；依赖注入是Spring框架实现控制反转的一种方式**。
 
+## 核心容器介绍
 
+### BeanFactory
+
+![](images/QQ20210413-234759.png)
+
+`BeanFacoty`：顶级的接口类，定义了IOC容器的基本功能规范，其还有三个重要的子类，分别是：
+
+- `ListableBeanFactory`：表示这些Bean可列表化
+- `HierarchicalBeanFactory`：表示这写Bean有集成关系
+- `AutowireCapableBeanFactory`：定义了Bean的自动装配规则
+
+这三个借口共同定义了Bean的集合、Bean之间的关系以及Bean的行为
+
+### IOC容器
+
+`ApplicationContext`是Spring 提供的高级的IOC容器，他能提供IOC容器的基本功能
 
 ![](images/WX20210413-133845@2x.png)
+
+### BeanDefinition
+
+Spring IOC 容器中还需要定义各种Bean对象以及相互之间的关系，在Spring中Bean 对象是以`BeanDefinition`来描述的。其集成体系图如下：
+
+![](images/QQ20210413-235838.png)
+
+### BeanDefinitonReader
+
+`BeanDefinitonReader`主要对Bean的解析过程。类结构图如下：
+
+![](images/QQ20210414-000307.png)
 
 
 
@@ -351,70 +379,36 @@ public ConfigurableApplicationContext run(String... args) {
 
 #### SpringApplicationRunListener监听器
 
-这里有必要介绍一下`SpringApplicationRunListener`接口，它是`SpringApplication`的`run`方法监听器。
+这里有必要介绍一下`SpringApplicationRunListener`接口，它是`SpringApplication`的`run`方法监听器，为`run`方法提供了各个运行阶段的监听事件处理功能。
 
 ![](images/WX20210413-004328@2x.png)
 
 ```java
 class SpringApplicationRunListeners {
 
-	private final Log log;
-
-	private final List<SpringApplicationRunListener> listeners;
-
-	SpringApplicationRunListeners(Log log, Collection<? extends SpringApplicationRunListener> listeners) {
-		this.log = log;
-		this.listeners = new ArrayList<>(listeners);
-	}
-  
   //run方法第一次被调用，会被立即调用，可以用于非常早期的初始化操作
-	void starting() {
-		for (SpringApplicationRunListener listener : this.listeners) {
-			listener.starting();
-		}
-	}
+	void starting() {}
 	
   //当environment准备完成，在ApplicationContext创建之前，该方法被调用
-	void environmentPrepared(ConfigurableEnvironment environment) {
-		for (SpringApplicationRunListener listener : this.listeners) {
-			listener.environmentPrepared(environment);
-		}
-	}
+	void environmentPrepared(ConfigurableEnvironment environment) {}
 	
   //当ApplicationContext创建完成，资源未被加载时，该方法被调用
-	void contextPrepared(ConfigurableApplicationContext context) {
-		for (SpringApplicationRunListener listener : this.listeners) {
-			listener.contextPrepared(context);
-		}
-	}
+	void contextPrepared(ConfigurableApplicationContext context) {}
 	
   //当ApplicationContext加载完成，未被刷新之前，调用该方法
-	void contextLoaded(ConfigurableApplicationContext context) {
-		for (SpringApplicationRunListener listener : this.listeners) {
-			listener.contextLoaded(context);
-		}
-	}
+	void contextLoaded(ConfigurableApplicationContext context) {}
 	
   //当ApplicationContext刷新启动之后，CommandRunner和ApplicationRunner未被调用之前，调用该方法
 	void started(ConfigurableApplicationContext context) {
-		for (SpringApplicationRunListener listener : this.listeners) {
-			listener.started(context);
-		}
-	}
 	
   //当所有准备工作就绪，run方法执行完成之前，该方法被调用
-	void running(ConfigurableApplicationContext context) {
-		for (SpringApplicationRunListener listener : this.listeners) {
-			listener.running(context);
-		}
-	}
+	void running(ConfigurableApplicationContext context) {}
 	
   //当程序出现错误时，该方法被调用
-	void failed(ConfigurableApplicationContext context, Throwable exception) {
-		for (SpringApplicationRunListener listener : this.listeners) {
-			callFailedListener(listener, context, exception);
-		}
+	void failed(ConfigurableApplicationContext context, Throwable exception) {}
 	}
 } 
 ```
+
+#### 初始化ApplicationArguments
 
