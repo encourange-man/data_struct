@@ -615,12 +615,6 @@ protected void postProcessApplicationContext(ConfigurableApplicationContext cont
 - 将配置源加载入上下文
 - 通知监控器context加载完成
 
-```java
-
-```
-
-
-
 BeanDefinitionLoader加载支持的范围包括：`Class`、`Resource`、`Package`和`CharSequence`四种。
 
 
