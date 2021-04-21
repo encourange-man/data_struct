@@ -15,9 +15,11 @@ IOC的设计思想，是通过专门的对象容器来创建和维护对象。�
 - `ListableBeanFactory`：表示这些Bean可列表化
 - `HierarchicalBeanFactory`：表示这写Bean有集成关系
 - `AutowireCapableBeanFactory`：定义了Bean的自动装配规则
-- `DefaultListableBeanFactory`：
+- **`DefaultListableBeanFactory`**：这个接口挺重要的，默认的IOC容器
 
 这三个借口共同定义了Bean的集合、Bean之间的关系以及Bean的行为
+
+·
 
 ### IOC容器
 
@@ -44,10 +46,6 @@ BeanDefinitionReader的工作都有哪些：
 
 
 
-描述对象的关系的文件会保存在哪里？
-
-
-
 定义对象关系的配置文件，spring使用**策略模式**来进行解析？
 
 ​	举个例子，ApplicationContext就有很多的策略
@@ -58,23 +56,15 @@ BeanDefinitionReader的工作都有哪些：
 
 
 
-
-
 核心组件关系的一个总结：
 
 - BeanDefinition：用来描述一个bean对象
+
 - BeanDefinitionReader：主要用来对Bean对象的解析过程
+
 - ApplicationContext：IOC容器，`DefaultListableBeanFactory`，会将所有的bean封装在`beanDefinitionMap`的map集合中。
 
-
-
-
-
-
-
-
-
-
+  
 
 # SpringBoot 核心运行原理
 
@@ -618,8 +608,6 @@ protected void postProcessApplicationContext(ConfigurableApplicationContext cont
 BeanDefinitionLoader加载支持的范围包括：`Class`、`Resource`、`Package`和`CharSequence`四种。
 
 
-
-#### 4.SpringApplicationContext刷新
 
 
 
