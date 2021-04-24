@@ -17,11 +17,12 @@ IOC的设计思想，是通过专门的对象容器来创建和维护对象。�
 - `ListableBeanFactory`：表示这些Bean可列表化
 - `HierarchicalBeanFactory`：表示这写Bean有集成关系
 - `AutowireCapableBeanFactory`：定义了Bean的自动装配规则
+- **`DefaultListableBeanFactory`**：这个接口挺重要的，默认的IOC容器
 
 这三个借口共同定义了Bean的集合、Bean之间的关系以及Bean的行为
 
-#### IOC容器
 
+#### IOC容器
 `ApplicationContext`是Spring 提供的高级的IOC容器，他能提供IOC容器的基本功能
 
 ![](images/WX20210413-133845@2x.png)
@@ -38,11 +39,39 @@ Spring IOC 容器中还需要定义各种Bean对象以及相互之间的关系�
 
 ![](images/QQ20210413-235838.png)
 
+BeanDefinitionReader的工作都有哪些：
+
+- 首先要找到描述对象关系的问题
+- 加载bean对象，并封装成一个`BeanDefinition`
+
+
+
+定义对象关系的配置文件，spring使用**策略模式**来进行解析？
+
+​	举个例子，ApplicationContext就有很多的策略
+
+- ClassPathXmlApplicationContext
+- AnnotionConfigApplicationContext
+- WebApplicationContext
+
+
+
+核心组件关系的一个总结：
+
+- BeanDefinition：用来描述一个bean对象
+
+- BeanDefinitionReader：主要用来对Bean对象的解析过程
+
+- ApplicationContext：IOC容器，`DefaultListableBeanFactory`，会将所有的bean封装在`beanDefinitionMap`的map集合中。
+
+  
+
 #### BeanDefinitonReader
 
 `BeanDefinitonReader`主要对Bean的解析过程。类结构图如下：
 
 ![](images/QQ20210414-000307.png)
+
 
 ### 基于注解的IOC初始化
 
@@ -446,12 +475,12 @@ public ConfigurableApplicationContext run(String... args) {
 		try {
       //创建ApplicationArgument对象
 			ApplicationArguments applicationArguments = new DefaultApplicationArguments(args);
-      //加载属性配置（application.properties和外部属性）
+      //加载属性配置（application.properties和外部属性），策略模式（根据不同的web环境类型）
 			ConfigurableEnvironment environment = prepareEnvironment(listeners, applicationArguments);
 			configureIgnoreBeanInfo(environment);
       //打印banner
 			Banner printedBanner = printBanner(environment);
-			//创建容器
+			//创建IOC容器
       context = createApplicationContext();
 			//异常报告器
       exceptionReporters = getSpringFactoriesInstances(SpringBootExceptionReporter.class,
@@ -486,6 +515,214 @@ public ConfigurableApplicationContext run(String... args) {
 		return context;
 	}
 ```
+
+下面逐步详细的介绍`run`方法的细节：
+
+#### 1. 创建ConfigurableEnvironment对象
+
+ConfigurableEnvironment接口的主要作用是：
+
+​			提供当前运行环境的公开接口，比如配置文件`profiles`各类系统属性和变量的设置、添加、读取、合并等功能
+
+```java
+private ConfigurableEnvironment prepareEnvironment(SpringApplicationRunListeners listeners,
+			ApplicationArguments applicationArguments) {
+		//使用策略模式，获取或者创建ConfigurableEnvironment环境对象（根据当前webApplication的类型）
+		ConfigurableEnvironment environment = getOrCreateEnvironment();
+    //配置环境，主要包括PropertySources和activeProfile的配置
+		configureEnvironment(environment, applicationArguments.getSourceArgs());
+		ConfigurationPropertySources.attach(environment);
+		//环境准备已经完成，通知对应的监听器
+    listeners.environmentPrepared(environment);
+    //将环境绑定到SpringApplication上
+		bindToSpringApplication(environment);
+    //判断是否是定制环境，如果不是将其转换成StandardEnviroment
+		if (!this.isCustomEnvironment) {
+			environment = new EnvironmentConverter(getClassLoader()).convertEnvironmentIfNecessary(environment,
+					deduceEnvironmentClass());
+		}
+		ConfigurationPropertySources.attach(environment);
+		return environment;
+}
+```
+
+![](images/WX20210414-144901.png)
+
+```java
+//1.配置环境
+protected void configureEnvironment(ConfigurableEnvironment environment, String[] args) {
+		//如果为true，则获取并设置转换服务
+   	if (this.addConversionService) {
+      //以单例模式创建ConversionService对象，并设置转换服务
+			ConversionService conversionService = ApplicationConversionService.getSharedInstance();
+			environment.setConversionService((ConfigurableConversionService) conversionService);
+		}
+  	//配置PropertySources（描述参数的优先级处理和默认参数与命令参数之间的关系。）
+		configurePropertySources(environment, args);
+  	//配置Profiles（设置激活生效的配置文件，对应spring.profile.active参数）
+		configureProfiles(environment, args);
+}
+
+
+protected void configurePropertySources(ConfigurableEnvironment environment, String[] args) {
+		//获取环境中属性资源信息
+  	MutablePropertySources sources = environment.getPropertySources();
+		//如果默认属性配置存在则将其放在属性资源的最后
+   	if (this.defaultProperties != null && !this.defaultProperties.isEmpty()) {
+			sources.addLast(new MapPropertySource("defaultProperties", this.defaultProperties));
+		}
+  	//如果命令行属性存在
+		if (this.addCommandLineProperties && args.length > 0) {
+			String name = CommandLinePropertySource.COMMAND_LINE_PROPERTY_SOURCE_NAME;
+			//默认属性和命令行属性冲突，则将命令行属性替换默认属性
+      if (sources.contains(name)) {
+				PropertySource<?> source = sources.get(name);
+				CompositePropertySource composite = new CompositePropertySource(name);
+				composite.addPropertySource(
+						new SimpleCommandLinePropertySource("springApplicationCommandLineArgs", args));
+				composite.addPropertySource(source);
+				sources.replace(name, composite);
+			}
+			else {
+        //默认属性与命令行不冲突，将命令行属性放入第一位
+				sources.addFirst(new SimpleCommandLinePropertySource(args));
+			}
+		}
+}
+
+protected void configureProfiles(ConfigurableEnvironment environment, String[] args) {
+    //如果存在而外的配置文件，则将其放在第一位（LinkHashList）
+		Set<String> profiles = new LinkedHashSet<>(this.additionalProfiles);
+  	//获取并设置激活的配置文件
+		profiles.addAll(Arrays.asList(environment.getActiveProfiles()));
+		environment.setActiveProfiles(StringUtils.toStringArray(profiles));
+}
+```
+
+
+
+#### 2.创建SpringApplicationContext（IOC容器）
+
+```java
+//同样使用策略模式，根据不同web环境，创建不同的IOC容器
+protected ConfigurableApplicationContext createApplicationContext() {
+		Class<?> contextClass = this.applicationContextClass;
+		if (contextClass == null) {
+			try {
+				switch (this.webApplicationType) {
+           //servlet容器，AnnotationConfigServletWebServerApplicationContex
+            case SERVLET:
+              contextClass = Class.forName(DEFAULT_SERVLET_WEB_CONTEXT_CLASS);
+              break;
+            //reactive容器，AnnotationConfigReactiveWebServerApplicationContext
+            case REACTIVE:
+              contextClass = Class.forName(DEFAULT_REACTIVE_WEB_CONTEXT_CLASS);
+              break;
+            //默认，AnnotationConfigApplicationContext
+            default:
+              contextClass = Class.forName(DEFAULT_CONTEXT_CLASS);
+				}
+			}
+			catch (ClassNotFoundException ex) {
+				throw new IllegalStateException(
+						"Unable create a default ApplicationContext, please specify an ApplicationContextClass", ex);
+			}
+		}
+		return (ConfigurableApplicationContext) BeanUtils.instantiateClass(contextClass);
+	}
+```
+
+![](images/WX20210414-163118.png)
+
+
+
+#### 3.SpringApplication对象的准备操作
+
+首先通过流程图了解一下核心流程：
+
+```java
+private void prepareContext(ConfigurableApplicationContext context, ConfigurableEnvironment environment,
+      SpringApplicationRunListeners listeners, ApplicationArguments applicationArguments, Banner printedBanner) {
+   //设置上下文的环境
+   context.setEnvironment(environment);
+   //applicationContext的后置处理
+   postProcessApplicationContext(context);
+   //context刷新之前，ApplicationContextInitializer初始化context
+   applyInitializers(context);
+   //通知监听器context准备完成，该方法上为上下文准备阶段，以下为上下文加载阶段
+   listeners.contextPrepared(context);
+   
+   //1.打印日志，启动profile
+   if (this.logStartupInfo) {
+      logStartupInfo(context.getParent() == null);
+      logStartupProfileInfo(context);
+   }
+   //2.获得ConfigurableListableBeanFactory并注册单例对象
+   ConfigurableListableBeanFactory beanFactory = context.getBeanFactory();
+   beanFactory.registerSingleton("springApplicationArguments", applicationArguments);
+   //3.注册打印日志对象
+   if (printedBanner != null) {
+      beanFactory.registerSingleton("springBootBanner", printedBanner);
+   }
+   if (beanFactory instanceof DefaultListableBeanFactory) {
+      ((DefaultListableBeanFactory) beanFactory)
+            .setAllowBeanDefinitionOverriding(this.allowBeanDefinitionOverriding);
+   }
+   if (this.lazyInitialization) {
+      context.addBeanFactoryPostProcessor(new LazyInitializationBeanFactoryPostProcessor());
+   }
+   //4.获取所有的配置源，并将配置源的所有bean加载到context中，最后通知监听器加载完成
+   Set<Object> sources = getAllSources();
+   Assert.notEmpty(sources, "Sources must not be empty");
+   load(context, sources.toArray(new Object[0]));
+   listeners.contextLoaded(context);
+}
+```
+
+![](images/WX20210414-005223@2x.png)
+
+```java
+//ApplicationContext后置处理流程
+protected void postProcessApplicationContext(ConfigurableApplicationContext context) {
+   //将当前的BeanNameGenerator（Bean对象命名策略）按照默认名字进行注册
+   if (this.beanNameGenerator != null) {
+     context.getBeanFactory().registerSingleton(AnnotationConfigUtils.CONFIGURATION_BEAN_NAME_GENERATOR,
+            this.beanNameGenerator);
+   }
+   if (this.resourceLoader != null) {
+      if (context instanceof GenericApplicationContext) {
+         ((GenericApplicationContext) context).setResourceLoader(this.resourceLoader);
+      }
+      if (context instanceof DefaultResourceLoader) {
+         ((DefaultResourceLoader) context).setClassLoader(this.resourceLoader.getClassLoader());
+      }
+   }
+   //获取并设置转换服务
+   if (this.addConversionService) {
+      context.getBeanFactory().setConversionService(ApplicationConversionService.getSharedInstance());
+   }
+}
+```
+
+![](images/WX20210414-172101@2x.png)
+
+
+
+
+
+应用上下文加载阶段包含以下步骤：
+
+- 打印日志和Profile的设置
+- 设置是否允许覆盖注册
+- 获取全部配置源
+- 将配置源加载入上下文
+- 通知监控器context加载完成
+
+BeanDefinitionLoader加载支持的范围包括：`Class`、`Resource`、`Package`和`CharSequence`四种。
+
+
+
+
 
 
 
@@ -522,5 +759,9 @@ class SpringApplicationRunListeners {
 } 
 ```
 
-#### 初始化ApplicationArguments
+
+
+
+
+
 
