@@ -1,16 +1,18 @@
-# Spring IOC 容器原理
+# Spring 核心原理
 
 IOC的设计思想，是通过专门的对象容器来创建和维护对象。依赖注入（DI，Dependency Injection）是Spring实现IoC容器的一种重要手段。**依赖注入将对象间的依赖的控制权从开发人员转移到了容器**，降低了开发成本。
 
 **控制反转是一种软件设计模式，其遵循了软件工程中的依赖倒置原则；依赖注入是Spring框架实现控制反转的一种方式**。
 
-## 核心容器介绍
+## Spring IOC
 
-### BeanFactory
+### 核心容器介绍
+
+#### BeanFactory
 
 ![](images/QQ20210413-234759.png)
 
-`BeanFacoty`：顶级的接口类，定义了IOC容器的基本功能规范，其还有三个重要的子类，分别是：
+`BeanFacoty`：他是spring bean 容器的顶级的接口类，定义了IOC容器的基本功能规范，其还有三个重要的子类，分别是：
 
 - `ListableBeanFactory`：表示这些Bean可列表化
 - `HierarchicalBeanFactory`：表示这写Bean有集成关系
@@ -18,23 +20,133 @@ IOC的设计思想，是通过专门的对象容器来创建和维护对象。�
 
 这三个借口共同定义了Bean的集合、Bean之间的关系以及Bean的行为
 
-### IOC容器
+#### IOC容器
 
 `ApplicationContext`是Spring 提供的高级的IOC容器，他能提供IOC容器的基本功能
 
 ![](images/WX20210413-133845@2x.png)
 
-### BeanDefinition
+
+
+`AnnotationConfigApplicationContext` 和 `AnnotationConfigWebApplicationContext` 这两个是准们处理`Spring`注解方式配置的容器。后者是前者的`Web`版本。两者的用法以及对注解的处理方式几乎没有差别。
+
+
+
+#### BeanDefinition
 
 Spring IOC 容器中还需要定义各种Bean对象以及相互之间的关系，在Spring中Bean 对象是以`BeanDefinition`来描述的。其集成体系图如下：
 
 ![](images/QQ20210413-235838.png)
 
-### BeanDefinitonReader
+#### BeanDefinitonReader
 
 `BeanDefinitonReader`主要对Bean的解析过程。类结构图如下：
 
 ![](images/QQ20210414-000307.png)
+
+### 基于注解的IOC初始化
+
+#### 1.定位Bean扫描路径
+
+在Spring中管理注解的Bean定义的容器有两个：**`AnnotationconfigApplicationContext `**和 **`AnnotationConfigWebApplicationContex`** ，后者是前者的Web版本，这两个的用法以及对注解的处理方式几乎没有什么差别。
+
+#### 2.读取注解的元数据
+
+```java
+public class AnnotationConfigApplicationContext extends GenericApplicationContext implements AnnotationConfigRegistry {
+	//读取注解的Bean定义读取器
+	private final AnnotatedBeanDefinitionReader reader;
+  //扫描指定类路径中注解Bean定义的扫描器
+	private final ClassPathBeanDefinitionScanner scanner;
+
+
+	public AnnotationConfigApplicationContext() {
+		this.reader = new AnnotatedBeanDefinitionReader(this);
+		this.scanner = new ClassPathBeanDefinitionScanner(this);
+	}
+
+	public AnnotationConfigApplicationContext(DefaultListableBeanFactory beanFactory) {
+		super(beanFactory);
+		this.reader = new AnnotatedBeanDefinitionReader(this);
+		this.scanner = new ClassPathBeanDefinitionScanner(this);
+	}
+
+	//常用的构造函数：注册配置类，刷新IOC容器
+	public AnnotationConfigApplicationContext(Class<?>... componentClasses) {
+		this();
+		register(componentClasses);
+		refresh();
+	}
+
+	//扫描basePackage包以及子包下的所有类，并自动识别所有SpringBean, 并将其注册到容器中
+	public AnnotationConfigApplicationContext(String... basePackages) {
+		this();
+		scan(basePackages);
+		refresh();
+	}
+
+	@Override
+	public void setEnvironment(ConfigurableEnvironment environment) {
+		super.setEnvironment(environment);
+		this.reader.setEnvironment(environment);
+		this.scanner.setEnvironment(environment);
+	}
+
+  //为容器的注册Bean 读取器和注解Bean扫描设置 Bean名称产生器
+	public void setBeanNameGenerator(BeanNameGenerator beanNameGenerator) {
+		this.reader.setBeanNameGenerator(beanNameGenerator);
+		this.scanner.setBeanNameGenerator(beanNameGenerator);
+		getBeanFactory().registerSingleton(
+				AnnotationConfigUtils.CONFIGURATION_BEAN_NAME_GENERATOR, beanNameGenerator);
+	}
+
+	//设置作用范围元信息解析器
+	public void setScopeMetadataResolver(ScopeMetadataResolver scopeMetadataResolver) {
+		this.reader.setScopeMetadataResolver(scopeMetadataResolver);
+		this.scanner.setScopeMetadataResolver(scopeMetadataResolver);
+	}
+  
+	//为容器注册一个要被处理的注解Bean，新注册的Bean，必须手动调用容器的refresh方法刷新容器，触发容器对新注册的Bean的处理
+	@Override
+	public void register(Class<?>... componentClasses) {
+		Assert.notEmpty(componentClasses, "At least one component class must be specified");
+		this.reader.register(componentClasses);
+	}
+
+	//扫描指定路径以及子包下的注解类，为了使新添加的类被处理，必须手动调用refresh方法刷新容器
+	@Override
+	public void scan(String... basePackages) {
+		Assert.notEmpty(basePackages, "At least one base package must be specified");
+		this.scanner.scan(basePackages);
+	}
+		。。。。
+}
+
+```
+
+Spring对注解有两种处理方式：
+
+（1）直接将注解Bean注册到容器中
+
+​        可以在初始化容器时注册；也可以在容器创建后手动调用注册方法向容器注册，然后通过手动刷新容器时容器对注册的注解Bean进行处理。
+
+（2）通过扫描指定包以及子包下的所有类
+
+​		在
+
+
+
+
+
+#### 3.扫描指定包并解析位BeanDefinition
+
+
+
+#### 4.注册注解BeanDefinition
+
+
+
+
 
 
 
